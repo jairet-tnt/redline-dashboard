@@ -139,7 +139,7 @@ interface MetaAd {
     thumbnail_url?: string;
     body?: string;
     title?: string;
-    effective_object_story_spec?: Record<string, unknown>;
+    object_story_spec?: Record<string, unknown>;
   };
 }
 
@@ -160,7 +160,7 @@ interface MetaInsight {
 
 async function fetchCreativeData(accountId: string, dateParams: string): Promise<Creative[]> {
   // Fetch ads with creative details
-  const adsUrl = `${GRAPH_API}/${accountId}/ads?fields=id,name,creative%7Bthumbnail_url,body,title,effective_object_story_spec%7D&limit=500&access_token=${ACCESS_TOKEN}`;
+  const adsUrl = `${GRAPH_API}/${accountId}/ads?fields=id,name,creative%7Bthumbnail_url,body,title,object_story_spec%7D&limit=500&access_token=${ACCESS_TOKEN}`;
   const ads = await fetchAllPages<MetaAd>(adsUrl);
   const adMap = new Map<string, MetaAd>();
   for (const ad of ads) adMap.set(ad.id, ad);
@@ -209,7 +209,7 @@ async function fetchCreativeData(accountId: string, dateParams: string): Promise
       videoViews3s: views3s,
       videoThruplay: thruplay,
       conta: accountLabel,
-      destinationUrl: extractUrl(ad?.creative?.effective_object_story_spec),
+      destinationUrl: extractUrl(ad?.creative?.object_story_spec),
     };
 
     return { ...base, status: computeStatus(base) };
