@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Header from "./components/Header";
 
 interface PaidRow {
   nome: string;
@@ -201,73 +202,43 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-stone">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-1 h-10 bg-red rounded-full" />
-            <div>
-              <p className="text-xs font-semibold tracking-[0.2em] uppercase text-gray-400">
-                Redline
-              </p>
-              <h1 className="text-xl font-bold text-black tracking-tight">
-                Dashboard de Performance
-              </h1>
-            </div>
+      <Header />
+
+      {/* Controls */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-4 flex items-center justify-end gap-3 flex-wrap">
+        <select
+          value={datePreset}
+          onChange={(e) => setDatePreset(e.target.value)}
+          className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-black focus:outline-none focus:ring-1 focus:ring-red"
+        >
+          <option value="maximum">Todo o Período</option>
+          <option value="last_7d">Últimos 7 dias</option>
+          <option value="last_14d">Últimos 14 dias</option>
+          <option value="last_30d">Últimos 30 dias</option>
+          <option value="last_90d">Últimos 90 dias</option>
+          <option value="this_month">Este Mês</option>
+          <option value="last_month">Mês Passado</option>
+          <option value="custom">Personalizado</option>
+        </select>
+        {datePreset === "custom" && (
+          <div className="flex items-center gap-1.5">
+            <input type="date" value={customSince} onChange={(e) => setCustomSince(e.target.value)}
+              className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-black focus:outline-none focus:ring-1 focus:ring-red" />
+            <span className="text-xs text-gray-400">até</span>
+            <input type="date" value={customUntil} onChange={(e) => setCustomUntil(e.target.value)}
+              className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-black focus:outline-none focus:ring-1 focus:ring-red" />
           </div>
-          <div className="flex items-center gap-3 flex-wrap justify-end">
-            <select
-              value={datePreset}
-              onChange={(e) => setDatePreset(e.target.value)}
-              className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-black focus:outline-none focus:ring-1 focus:ring-red"
-            >
-              <option value="maximum">Todo o Período</option>
-              <option value="last_7d">Últimos 7 dias</option>
-              <option value="last_14d">Últimos 14 dias</option>
-              <option value="last_30d">Últimos 30 dias</option>
-              <option value="last_90d">Últimos 90 dias</option>
-              <option value="this_month">Este Mês</option>
-              <option value="last_month">Mês Passado</option>
-              <option value="custom">Personalizado</option>
-            </select>
-            {datePreset === "custom" && (
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="date"
-                  value={customSince}
-                  onChange={(e) => setCustomSince(e.target.value)}
-                  className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-black focus:outline-none focus:ring-1 focus:ring-red"
-                />
-                <span className="text-xs text-gray-400">até</span>
-                <input
-                  type="date"
-                  value={customUntil}
-                  onChange={(e) => setCustomUntil(e.target.value)}
-                  className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-black focus:outline-none focus:ring-1 focus:ring-red"
-                />
-              </div>
-            )}
-            {fetchedAt && (
-              <p className="text-xs text-gray-400 hidden sm:block">
-                Atualizado:{" "}
-                {new Date(fetchedAt).toLocaleString("pt-BR", {
-                  day: "2-digit",
-                  month: "2-digit",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </p>
-            )}
-            <button
-              onClick={fetchData}
-              disabled={loading}
-              className="px-3 py-1.5 text-sm font-medium bg-black text-white rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50"
-            >
-              {loading ? "..." : "Atualizar"}
-            </button>
-          </div>
-        </div>
-      </header>
+        )}
+        {fetchedAt && (
+          <p className="text-xs text-gray-400 hidden sm:block">
+            {new Date(fetchedAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+          </p>
+        )}
+        <button onClick={fetchData} disabled={loading}
+          className="px-3 py-1.5 text-sm font-medium bg-black text-white rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50">
+          {loading ? "..." : "Atualizar"}
+        </button>
+      </div>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
         {error && (
