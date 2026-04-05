@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 
 interface PaidRow {
   nome: string;
-  formato: string;
   investimento: number;
   impressoes: number;
   alcance: number;
@@ -16,6 +15,7 @@ interface PaidRow {
   roas: number;
   frequencia: number;
   status: "Saudável" | "Atenção" | "Pausar";
+  conta: string;
 }
 
 interface OrganicRow {
@@ -81,6 +81,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"pago" | "organico">("pago");
+  const [datePreset, setDatePreset] = useState("maximum");
 
   // Paid sort
   const [paidSortKey, setPaidSortKey] = useState<keyof PaidRow>("roas");
@@ -94,7 +95,7 @@ export default function Home() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/sheets");
+      const res = await fetch(`/api/sheets?date_preset=${datePreset}`);
       if (!res.ok) throw new Error("Erro ao carregar dados");
       const data = await res.json();
       setPaid(data.paid || []);
@@ -105,11 +106,11 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [datePreset]);
 
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+  }, [fetchData, datePreset]);
 
   // Paid sorting
   const sortedPaid = [...paid].sort((a, b) => {
@@ -198,7 +199,20 @@ export default function Home() {
               </h1>
             </div>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <select
+              value={datePreset}
+              onChange={(e) => setDatePreset(e.target.value)}
+              className="text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-black focus:outline-none focus:ring-1 focus:ring-red"
+            >
+              <option value="maximum">Todo o Período</option>
+              <option value="last_7d">Últimos 7 dias</option>
+              <option value="last_14d">Últimos 14 dias</option>
+              <option value="last_30d">Últimos 30 dias</option>
+              <option value="last_90d">Últimos 90 dias</option>
+              <option value="this_month">Este Mês</option>
+              <option value="last_month">Mês Passado</option>
+            </select>
             {fetchedAt && (
               <p className="text-xs text-gray-400 hidden sm:block">
                 Atualizado:{" "}
@@ -280,11 +294,11 @@ export default function Home() {
               <table className="w-full min-w-[800px]">
                 <thead>
                   <tr className="border-b border-gray-100">
+                    <th className={thClass} onClick={() => handlePaidSort("conta")}>
+                      Conta <SortIcon active={paidSortKey === "conta"} dir={paidSortDir} />
+                    </th>
                     <th className={thClass} onClick={() => handlePaidSort("nome")}>
                       Criativo <SortIcon active={paidSortKey === "nome"} dir={paidSortDir} />
-                    </th>
-                    <th className={thClass} onClick={() => handlePaidSort("formato")}>
-                      Formato <SortIcon active={paidSortKey === "formato"} dir={paidSortDir} />
                     </th>
                     <th className={thClass} onClick={() => handlePaidSort("investimento")}>
                       Investimento <SortIcon active={paidSortKey === "investimento"} dir={paidSortDir} />
@@ -330,10 +344,10 @@ export default function Home() {
                           row.status === "Pausar" ? "bg-red-50/40" : ""
                         }`}
                       >
+                        <td className={`${tdClass} text-xs text-gray-500`}>{row.conta}</td>
                         <td className={`${tdClass} font-medium text-black max-w-[200px] truncate`}>
                           {row.nome}
                         </td>
-                        <td className={tdClass}>{row.formato}</td>
                         <td className={tdClass}>{fmtBRL(row.investimento)}</td>
                         <td className={tdClass}>{fmtPct(row.ctr)}</td>
                         <td className={tdClass}>{fmtBRL(row.cpm)}</td>

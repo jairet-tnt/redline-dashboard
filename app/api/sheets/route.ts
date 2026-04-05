@@ -1,11 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-const SHEETS_API_KEY = process.env.GOOGLE_SHEETS_API_KEY;
-const SHEET_ID = process.env.GOOGLE_SHEET_ID;
+const ACCESS_TOKEN = process.env.META_ACCESS_TOKEN;
+const AD_ACCOUNT_IDS = process.env.META_AD_ACCOUNT_IDS?.split(",") || [];
+
+const GRAPH_API = "https://graph.facebook.com/v21.0";
 
 interface PaidRow {
   nome: string;
-  formato: string;
   investimento: number;
   impressoes: number;
   alcance: number;
@@ -17,45 +18,16 @@ interface PaidRow {
   roas: number;
   frequencia: number;
   status: "Saudável" | "Atenção" | "Pausar";
-}
-
-interface OrganicRow {
-  nome: string;
-  formato: string;
-  data: string;
-  alcance: number;
-  impressoes: number;
-  curtidas: number;
-  comentarios: number;
-  salvamentos: number;
-  compartilhamentos: number;
-  taxaEngajamento: number;
-}
-
-function parseNum(val: string | undefined): number {
-  if (!val) return 0;
-  // Handle Brazilian number format: 1.234,56 → 1234.56
-  const cleaned = val
-    .replace(/R\$\s?/g, "")
-    .replace(/%/g, "")
-    .replace(/x/gi, "")
-    .trim();
-  // If it has both . and , assume Brazilian format
-  if (cleaned.includes(",")) {
-    return parseFloat(cleaned.replace(/\./g, "").replace(",", ".")) || 0;
-  }
-  return parseFloat(cleaned) || 0;
+  conta: string;
 }
 
 function computeStatus(row: { frequencia: number; ctr: number; roas: number }): "Saudável" | "Atenção" | "Pausar" {
   const { frequencia, ctr, roas } = row;
 
-  // KILL (most severe)
   if (frequencia > 4.5 || (ctr < 0.5 && frequencia > 3) || roas < 1) {
     return "Pausar";
   }
 
-  // WATCH
   if (
     (frequencia >= 3 && frequencia <= 4.5) ||
     (ctr >= 0.5 && ctr <= 1.0) ||
@@ -64,83 +36,127 @@ function computeStatus(row: { frequencia: number; ctr: number; roas: number }): 
     return "Atenção";
   }
 
-  // HEALTHY
   if (frequencia < 3 && ctr > 1.0 && roas >= 2) {
     return "Saudável";
   }
 
-  // Default to watch if no clear category
   return "Atenção";
 }
 
-async function fetchSheet(range: string): Promise<string[][]> {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}?key=${SHEETS_API_KEY}`;
-  const res = await fetch(url, { next: { revalidate: 300 } });
-  if (!res.ok) {
-    throw new Error(`Sheets API error: ${res.status} ${res.statusText}`);
+function getActionValue(
+  actions: Array<{ action_type: string; value: string }> | undefined,
+  ...types: string[]
+): number {
+  if (!actions) return 0;
+  for (const type of types) {
+    const action = actions.find((a) => a.action_type === type);
+    if (action) return parseFloat(action.value) || 0;
   }
-  const data = await res.json();
-  return data.values || [];
+  return 0;
 }
 
-export async function GET() {
-  if (!SHEETS_API_KEY || !SHEET_ID) {
+interface MetaInsightRow {
+  ad_name?: string;
+  spend?: string;
+  impressions?: string;
+  reach?: string;
+  clicks?: string;
+  ctr?: string;
+  cpm?: string;
+  frequency?: string;
+  actions?: Array<{ action_type: string; value: string }>;
+  action_values?: Array<{ action_type: string; value: string }>;
+}
+
+async function fetchAllPages(url: string): Promise<MetaInsightRow[]> {
+  const allData: MetaInsightRow[] = [];
+  let nextUrl: string | null = url;
+
+  while (nextUrl) {
+    const res: Response = await fetch(nextUrl);
+    if (!res.ok) {
+      const err = await res.text();
+      console.error("Meta API error:", err);
+      throw new Error(`Meta API error: ${res.status}`);
+    }
+    const json = await res.json();
+    allData.push(...(json.data || []));
+    nextUrl = json.paging?.next || null;
+  }
+
+  return allData;
+}
+
+async function fetchAdInsights(accountId: string, datePreset: string): Promise<PaidRow[]> {
+  const fields = [
+    "ad_name",
+    "spend",
+    "impressions",
+    "reach",
+    "clicks",
+    "ctr",
+    "cpm",
+    "frequency",
+    "actions",
+    "action_values",
+  ].join(",");
+
+  const url = `${GRAPH_API}/${accountId}/insights?fields=${fields}&level=ad&date_preset=${datePreset}&limit=500&access_token=${ACCESS_TOKEN}`;
+
+  const data = await fetchAllPages(url);
+
+  const accountLabel =
+    accountId === "act_1531634697565694"
+      ? "RDLN_BR1"
+      : accountId === "act_1508748923121137"
+        ? "RDLN_BR2"
+        : accountId;
+
+  return data.map((row) => {
+    const spend = parseFloat(row.spend || "0") || 0;
+    // Try purchase first, then lead as conversion metric
+    const conversions = getActionValue(row.actions, "purchase", "omni_purchase", "lead", "offsite_conversion.fb_pixel_lead");
+    const revenue = getActionValue(row.action_values, "purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase");
+    const roas = spend > 0 ? revenue / spend : 0;
+
+    const base = {
+      nome: row.ad_name || "",
+      investimento: spend,
+      impressoes: parseInt(row.impressions || "0") || 0,
+      alcance: parseInt(row.reach || "0") || 0,
+      cliques: parseInt(row.clicks || "0") || 0,
+      ctr: parseFloat(row.ctr || "0") || 0,
+      cpm: parseFloat(row.cpm || "0") || 0,
+      compras: conversions,
+      receita: revenue,
+      roas,
+      frequencia: parseFloat(row.frequency || "0") || 0,
+      conta: accountLabel,
+    };
+
+    return { ...base, status: computeStatus(base) };
+  });
+}
+
+export async function GET(request: NextRequest) {
+  if (!ACCESS_TOKEN || AD_ACCOUNT_IDS.length === 0) {
     return NextResponse.json(
-      { error: "Missing GOOGLE_SHEETS_API_KEY or GOOGLE_SHEET_ID environment variables" },
+      { error: "Missing META_ACCESS_TOKEN or META_AD_ACCOUNT_IDS environment variables" },
       { status: 500 }
     );
   }
 
+  const datePreset = request.nextUrl.searchParams.get("date_preset") || "maximum";
+
   try {
-    const [paidRows, organicRows] = await Promise.all([
-      fetchSheet("Pago!A:L"),
-      fetchSheet("Orgânico!A:J"),
-    ]);
+    const results = await Promise.all(
+      AD_ACCOUNT_IDS.map((id) => fetchAdInsights(id.trim(), datePreset))
+    );
 
-    // Parse paid data (skip header row)
-    const paid: PaidRow[] = paidRows
-      .slice(1)
-      .filter((row) => row[0] && row[0].trim() !== "")
-      .map((row) => {
-        const base = {
-          nome: row[0] || "",
-          formato: row[1] || "",
-          investimento: parseNum(row[2]),
-          impressoes: parseNum(row[3]),
-          alcance: parseNum(row[4]),
-          cliques: parseNum(row[5]),
-          ctr: parseNum(row[6]),
-          cpm: parseNum(row[7]),
-          compras: parseNum(row[8]),
-          receita: parseNum(row[9]),
-          roas: parseNum(row[10]),
-          frequencia: parseNum(row[11]),
-        };
-        return {
-          ...base,
-          status: computeStatus(base),
-        };
-      });
-
-    // Parse organic data (skip header row)
-    const organic: OrganicRow[] = organicRows
-      .slice(1)
-      .filter((row) => row[0] && row[0].trim() !== "")
-      .map((row) => ({
-        nome: row[0] || "",
-        formato: row[1] || "",
-        data: row[2] || "",
-        alcance: parseNum(row[3]),
-        impressoes: parseNum(row[4]),
-        curtidas: parseNum(row[5]),
-        comentarios: parseNum(row[6]),
-        salvamentos: parseNum(row[7]),
-        compartilhamentos: parseNum(row[8]),
-        taxaEngajamento: parseNum(row[9]),
-      }));
+    const paid = results.flat();
 
     return NextResponse.json(
-      { paid, organic, fetchedAt: new Date().toISOString() },
+      { paid, organic: [], fetchedAt: new Date().toISOString() },
       {
         headers: {
           "Cache-Control": "public, s-maxage=300, stale-while-revalidate=60",
@@ -148,9 +164,9 @@ export async function GET() {
       }
     );
   } catch (err) {
-    console.error("Sheets API error:", err);
+    console.error("Meta API error:", err);
     return NextResponse.json(
-      { error: "Erro ao buscar dados da planilha" },
+      { error: "Erro ao buscar dados da Meta" },
       { status: 500 }
     );
   }
