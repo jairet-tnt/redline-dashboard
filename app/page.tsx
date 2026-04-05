@@ -23,11 +23,11 @@ interface OrganicRow {
   formato: string;
   data: string;
   alcance: number;
-  impressoes: number;
   curtidas: number;
-  comentarios: number;
   salvamentos: number;
   compartilhamentos: number;
+  visualizacoes: number;
+  interacoes: number;
   taxaEngajamento: number;
 }
 
@@ -402,6 +402,9 @@ export default function Home() {
                     <th className={thClass} onClick={() => handleOrgSort("compartilhamentos")}>
                       Compartilh. <SortIcon active={orgSortKey === "compartilhamentos"} dir={orgSortDir} />
                     </th>
+                    <th className={thClass} onClick={() => handleOrgSort("visualizacoes")}>
+                      Views <SortIcon active={orgSortKey === "visualizacoes"} dir={orgSortDir} />
+                    </th>
                     <th className={thClass} onClick={() => handleOrgSort("taxaEngajamento")}>
                       Engajamento <SortIcon active={orgSortKey === "taxaEngajamento"} dir={orgSortDir} />
                     </th>
@@ -410,13 +413,13 @@ export default function Home() {
                 <tbody>
                   {loading && organic.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
+                      <td colSpan={9} className="px-4 py-12 text-center text-gray-400">
                         Carregando...
                       </td>
                     </tr>
                   ) : sortedOrganic.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
+                      <td colSpan={9} className="px-4 py-12 text-center text-gray-400">
                         Nenhum dado encontrado
                       </td>
                     </tr>
@@ -437,6 +440,7 @@ export default function Home() {
                         <td className={tdClass}>{fmtInt(row.curtidas)}</td>
                         <td className={tdClass}>{fmtInt(row.salvamentos)}</td>
                         <td className={tdClass}>{fmtInt(row.compartilhamentos)}</td>
+                        <td className={tdClass}>{row.visualizacoes > 0 ? fmtInt(row.visualizacoes) : "—"}</td>
                         <td className={`${tdClass} font-semibold`}>{fmtPct(row.taxaEngajamento)}</td>
                       </tr>
                     ))

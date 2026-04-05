@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 const ACCESS_TOKEN = process.env.META_ACCESS_TOKEN;
 const AD_ACCOUNT_IDS = process.env.META_AD_ACCOUNT_IDS?.split(",") || [];
+const INSTAGRAM_ACCOUNT_ID = process.env.INSTAGRAM_ACCOUNT_ID;
 
 const GRAPH_API = "https://graph.facebook.com/v21.0";
 
@@ -19,6 +20,19 @@ interface PaidRow {
   frequencia: number;
   status: "Saudável" | "Atenção" | "Pausar";
   conta: string;
+}
+
+interface OrganicRow {
+  nome: string;
+  formato: string;
+  data: string;
+  alcance: number;
+  curtidas: number;
+  salvamentos: number;
+  compartilhamentos: number;
+  visualizacoes: number;
+  interacoes: number;
+  taxaEngajamento: number;
 }
 
 function computeStatus(row: { frequencia: number; ctr: number; roas: number }): "Saudável" | "Atenção" | "Pausar" {
@@ -68,8 +82,8 @@ interface MetaInsightRow {
   action_values?: Array<{ action_type: string; value: string }>;
 }
 
-async function fetchAllPages(url: string): Promise<MetaInsightRow[]> {
-  const allData: MetaInsightRow[] = [];
+async function fetchAllPages<T>(url: string): Promise<T[]> {
+  const allData: T[] = [];
   let nextUrl: string | null = url;
 
   while (nextUrl) {
@@ -87,6 +101,8 @@ async function fetchAllPages(url: string): Promise<MetaInsightRow[]> {
   return allData;
 }
 
+// ── Paid (Meta Ads) ──
+
 async function fetchAdInsights(accountId: string, datePreset: string): Promise<PaidRow[]> {
   const fields = [
     "ad_name",
@@ -103,7 +119,7 @@ async function fetchAdInsights(accountId: string, datePreset: string): Promise<P
 
   const url = `${GRAPH_API}/${accountId}/insights?fields=${fields}&level=ad&date_preset=${datePreset}&limit=500&access_token=${ACCESS_TOKEN}`;
 
-  const data = await fetchAllPages(url);
+  const data = await fetchAllPages<MetaInsightRow>(url);
 
   const accountLabel =
     accountId === "act_1531634697565694"
@@ -114,7 +130,6 @@ async function fetchAdInsights(accountId: string, datePreset: string): Promise<P
 
   return data.map((row) => {
     const spend = parseFloat(row.spend || "0") || 0;
-    // Try purchase first, then lead as conversion metric
     const conversions = getActionValue(row.actions, "purchase", "omni_purchase", "lead", "offsite_conversion.fb_pixel_lead");
     const revenue = getActionValue(row.action_values, "purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase");
     const roas = spend > 0 ? revenue / spend : 0;
@@ -138,6 +153,108 @@ async function fetchAdInsights(accountId: string, datePreset: string): Promise<P
   });
 }
 
+// ── Organic (Instagram) ──
+
+interface IGMedia {
+  id: string;
+  caption?: string;
+  media_type: string;
+  timestamp: string;
+  like_count: number;
+  comments_count: number;
+}
+
+interface IGInsightValue {
+  name: string;
+  values: Array<{ value: number }>;
+}
+
+function getInsightValue(insights: IGInsightValue[], name: string): number {
+  const metric = insights.find((i) => i.name === name);
+  return metric?.values?.[0]?.value || 0;
+}
+
+function formatMediaType(type: string): string {
+  switch (type) {
+    case "IMAGE": return "Imagem";
+    case "VIDEO": return "Reels";
+    case "CAROUSEL_ALBUM": return "Carrossel";
+    default: return type;
+  }
+}
+
+function extractPostName(caption: string | undefined): string {
+  if (!caption) return "(sem legenda)";
+  // First line or first 60 chars
+  const firstLine = caption.split("\n")[0];
+  if (firstLine.length <= 60) return firstLine;
+  return firstLine.substring(0, 57) + "...";
+}
+
+async function fetchInstagramOrganic(): Promise<OrganicRow[]> {
+  if (!INSTAGRAM_ACCOUNT_ID) return [];
+
+  // Fetch recent media (up to 50 posts)
+  const mediaUrl = `${GRAPH_API}/${INSTAGRAM_ACCOUNT_ID}/media?fields=id,caption,media_type,timestamp,like_count,comments_count&limit=50&access_token=${ACCESS_TOKEN}`;
+
+  const media = await fetchAllPages<IGMedia>(mediaUrl);
+
+  // Fetch insights for each post (in batches to avoid rate limits)
+  const organic: OrganicRow[] = [];
+
+  for (const post of media) {
+    try {
+      // Use views for video/reels, skip for images/carousels
+      const isVideo = post.media_type === "VIDEO";
+      const metrics = isVideo
+        ? "reach,saved,shares,total_interactions,views"
+        : "reach,saved,shares,total_interactions";
+
+      const insightsUrl = `${GRAPH_API}/${post.id}/insights?metric=${metrics}&access_token=${ACCESS_TOKEN}`;
+      const insightsRes: Response = await fetch(insightsUrl);
+
+      let reach = 0;
+      let saved = 0;
+      let shares = 0;
+      let interactions = 0;
+      let views = 0;
+
+      if (insightsRes.ok) {
+        const insightsData = await insightsRes.json();
+        const insights: IGInsightValue[] = insightsData.data || [];
+        reach = getInsightValue(insights, "reach");
+        saved = getInsightValue(insights, "saved");
+        shares = getInsightValue(insights, "shares");
+        interactions = getInsightValue(insights, "total_interactions");
+        views = isVideo ? getInsightValue(insights, "views") : 0;
+      }
+
+      const engagementRate = reach > 0
+        ? ((post.like_count + post.comments_count + saved + shares) / reach) * 100
+        : 0;
+
+      organic.push({
+        nome: extractPostName(post.caption),
+        formato: formatMediaType(post.media_type),
+        data: new Date(post.timestamp).toLocaleDateString("pt-BR"),
+        alcance: reach,
+        curtidas: post.like_count || 0,
+        salvamentos: saved,
+        compartilhamentos: shares,
+        visualizacoes: views,
+        interacoes: interactions,
+        taxaEngajamento: Math.round(engagementRate * 100) / 100,
+      });
+    } catch (err) {
+      console.error(`Error fetching insights for post ${post.id}:`, err);
+    }
+  }
+
+  return organic;
+}
+
+// ── Handler ──
+
 export async function GET(request: NextRequest) {
   if (!ACCESS_TOKEN || AD_ACCOUNT_IDS.length === 0) {
     return NextResponse.json(
@@ -149,14 +266,15 @@ export async function GET(request: NextRequest) {
   const datePreset = request.nextUrl.searchParams.get("date_preset") || "maximum";
 
   try {
-    const results = await Promise.all(
-      AD_ACCOUNT_IDS.map((id) => fetchAdInsights(id.trim(), datePreset))
-    );
+    const [paidResults, organic] = await Promise.all([
+      Promise.all(AD_ACCOUNT_IDS.map((id) => fetchAdInsights(id.trim(), datePreset))),
+      fetchInstagramOrganic(),
+    ]);
 
-    const paid = results.flat();
+    const paid = paidResults.flat();
 
     return NextResponse.json(
-      { paid, organic: [], fetchedAt: new Date().toISOString() },
+      { paid, organic, fetchedAt: new Date().toISOString() },
       {
         headers: {
           "Cache-Control": "public, s-maxage=300, stale-while-revalidate=60",
