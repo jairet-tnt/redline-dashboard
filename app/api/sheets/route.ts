@@ -33,6 +33,7 @@ interface OrganicRow {
   visualizacoes: number;
   interacoes: number;
   taxaEngajamento: number;
+  permalink: string;
 }
 
 function computeStatus(row: { frequencia: number; ctr: number; roas: number }): "Saudável" | "Atenção" | "Pausar" {
@@ -103,7 +104,7 @@ async function fetchAllPages<T>(url: string): Promise<T[]> {
 
 // ── Paid (Meta Ads) ──
 
-async function fetchAdInsights(accountId: string, datePreset: string): Promise<PaidRow[]> {
+async function fetchAdInsights(accountId: string, dateParams: string): Promise<PaidRow[]> {
   const fields = [
     "ad_name",
     "spend",
@@ -117,7 +118,7 @@ async function fetchAdInsights(accountId: string, datePreset: string): Promise<P
     "action_values",
   ].join(",");
 
-  const url = `${GRAPH_API}/${accountId}/insights?fields=${fields}&level=ad&date_preset=${datePreset}&limit=500&access_token=${ACCESS_TOKEN}`;
+  const url = `${GRAPH_API}/${accountId}/insights?fields=${fields}&level=ad&${dateParams}&limit=500&access_token=${ACCESS_TOKEN}`;
 
   const data = await fetchAllPages<MetaInsightRow>(url);
 
@@ -162,6 +163,7 @@ interface IGMedia {
   timestamp: string;
   like_count: number;
   comments_count: number;
+  permalink?: string;
 }
 
 interface IGInsightValue {
@@ -195,59 +197,63 @@ async function fetchInstagramOrganic(): Promise<OrganicRow[]> {
   if (!INSTAGRAM_ACCOUNT_ID) return [];
 
   // Fetch recent media (up to 50 posts)
-  const mediaUrl = `${GRAPH_API}/${INSTAGRAM_ACCOUNT_ID}/media?fields=id,caption,media_type,timestamp,like_count,comments_count&limit=50&access_token=${ACCESS_TOKEN}`;
+  const mediaUrl = `${GRAPH_API}/${INSTAGRAM_ACCOUNT_ID}/media?fields=id,caption,media_type,timestamp,like_count,comments_count,permalink&limit=50&access_token=${ACCESS_TOKEN}`;
 
   const media = await fetchAllPages<IGMedia>(mediaUrl);
 
-  // Fetch insights for each post (in batches to avoid rate limits)
+  // Fetch insights in parallel batches of 10
+  const batchSize = 10;
   const organic: OrganicRow[] = [];
 
-  for (const post of media) {
-    try {
-      // Use views for video/reels, skip for images/carousels
-      const isVideo = post.media_type === "VIDEO";
-      const metrics = isVideo
-        ? "reach,saved,shares,total_interactions,views"
-        : "reach,saved,shares,total_interactions";
+  for (let i = 0; i < media.length; i += batchSize) {
+    const batch = media.slice(i, i + batchSize);
+    const batchResults = await Promise.all(
+      batch.map(async (post) => {
+        try {
+          const isVideo = post.media_type === "VIDEO";
+          const metrics = isVideo
+            ? "reach,saved,shares,total_interactions,views"
+            : "reach,saved,shares,total_interactions";
 
-      const insightsUrl = `${GRAPH_API}/${post.id}/insights?metric=${metrics}&access_token=${ACCESS_TOKEN}`;
-      const insightsRes: Response = await fetch(insightsUrl);
+          const insightsUrl = `${GRAPH_API}/${post.id}/insights?metric=${metrics}&access_token=${ACCESS_TOKEN}`;
+          const insightsRes: Response = await fetch(insightsUrl);
 
-      let reach = 0;
-      let saved = 0;
-      let shares = 0;
-      let interactions = 0;
-      let views = 0;
+          let reach = 0, saved = 0, shares = 0, interactions = 0, views = 0;
 
-      if (insightsRes.ok) {
-        const insightsData = await insightsRes.json();
-        const insights: IGInsightValue[] = insightsData.data || [];
-        reach = getInsightValue(insights, "reach");
-        saved = getInsightValue(insights, "saved");
-        shares = getInsightValue(insights, "shares");
-        interactions = getInsightValue(insights, "total_interactions");
-        views = isVideo ? getInsightValue(insights, "views") : 0;
-      }
+          if (insightsRes.ok) {
+            const insightsData = await insightsRes.json();
+            const insights: IGInsightValue[] = insightsData.data || [];
+            reach = getInsightValue(insights, "reach");
+            saved = getInsightValue(insights, "saved");
+            shares = getInsightValue(insights, "shares");
+            interactions = getInsightValue(insights, "total_interactions");
+            views = isVideo ? getInsightValue(insights, "views") : 0;
+          }
 
-      const engagementRate = reach > 0
-        ? ((post.like_count + post.comments_count + saved + shares) / reach) * 100
-        : 0;
+          const engagementRate = reach > 0
+            ? ((post.like_count + post.comments_count + saved + shares) / reach) * 100
+            : 0;
 
-      organic.push({
-        nome: extractPostName(post.caption),
-        formato: formatMediaType(post.media_type),
-        data: new Date(post.timestamp).toLocaleDateString("pt-BR"),
-        alcance: reach,
-        curtidas: post.like_count || 0,
-        salvamentos: saved,
-        compartilhamentos: shares,
-        visualizacoes: views,
-        interacoes: interactions,
-        taxaEngajamento: Math.round(engagementRate * 100) / 100,
-      });
-    } catch (err) {
-      console.error(`Error fetching insights for post ${post.id}:`, err);
-    }
+          return {
+            nome: extractPostName(post.caption),
+            formato: formatMediaType(post.media_type),
+            data: new Date(post.timestamp).toLocaleDateString("pt-BR"),
+            alcance: reach,
+            curtidas: post.like_count || 0,
+            salvamentos: saved,
+            compartilhamentos: shares,
+            visualizacoes: views,
+            interacoes: interactions,
+            taxaEngajamento: Math.round(engagementRate * 100) / 100,
+            permalink: post.permalink || "",
+          };
+        } catch (err) {
+          console.error(`Error fetching insights for post ${post.id}:`, err);
+          return null;
+        }
+      })
+    );
+    organic.push(...batchResults.filter((r): r is OrganicRow => r !== null));
   }
 
   return organic;
@@ -264,10 +270,20 @@ export async function GET(request: NextRequest) {
   }
 
   const datePreset = request.nextUrl.searchParams.get("date_preset") || "maximum";
+  const since = request.nextUrl.searchParams.get("since");
+  const until = request.nextUrl.searchParams.get("until");
+
+  // Build date params: custom range takes priority over preset
+  let dateParams: string;
+  if (since && until) {
+    dateParams = `time_range=${encodeURIComponent(JSON.stringify({ since, until }))}`;
+  } else {
+    dateParams = `date_preset=${datePreset}`;
+  }
 
   try {
     const [paidResults, organic] = await Promise.all([
-      Promise.all(AD_ACCOUNT_IDS.map((id) => fetchAdInsights(id.trim(), datePreset))),
+      Promise.all(AD_ACCOUNT_IDS.map((id) => fetchAdInsights(id.trim(), dateParams))),
       fetchInstagramOrganic(),
     ]);
 

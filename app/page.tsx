@@ -29,6 +29,7 @@ interface OrganicRow {
   visualizacoes: number;
   interacoes: number;
   taxaEngajamento: number;
+  permalink: string;
 }
 
 function fmtBRL(val: number): string {
@@ -82,6 +83,9 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"pago" | "organico">("pago");
   const [datePreset, setDatePreset] = useState("maximum");
+  const [customSince, setCustomSince] = useState("");
+  const [customUntil, setCustomUntil] = useState("");
+  const [accountFilter, setAccountFilter] = useState("all");
 
   // Paid sort
   const [paidSortKey, setPaidSortKey] = useState<keyof PaidRow>("roas");
@@ -95,7 +99,11 @@ export default function Home() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/sheets?date_preset=${datePreset}`);
+      let url = `/api/sheets?date_preset=${datePreset}`;
+      if (datePreset === "custom" && customSince && customUntil) {
+        url = `/api/sheets?since=${customSince}&until=${customUntil}`;
+      }
+      const res = await fetch(url);
       if (!res.ok) throw new Error("Erro ao carregar dados");
       const data = await res.json();
       setPaid(data.paid || []);
@@ -106,14 +114,19 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [datePreset]);
+  }, [datePreset, customSince, customUntil]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData, datePreset]);
 
+  // Account filter
+  const filteredPaid = accountFilter === "all"
+    ? paid
+    : paid.filter((r) => r.conta === accountFilter);
+
   // Paid sorting
-  const sortedPaid = [...paid].sort((a, b) => {
+  const sortedPaid = [...filteredPaid].sort((a, b) => {
     const aVal = a[paidSortKey];
     const bVal = b[paidSortKey];
     if (typeof aVal === "number" && typeof bVal === "number") {
@@ -142,18 +155,21 @@ export default function Home() {
     .slice(0, 3)
     .map((r) => r.nome);
 
-  // Paid summary
-  const totalInvestimento = paid.reduce((s, r) => s + r.investimento, 0);
+  // Paid summary (uses filtered data)
+  const totalInvestimento = filteredPaid.reduce((s, r) => s + r.investimento, 0);
   const weightedRoas =
     totalInvestimento > 0
-      ? paid.reduce((s, r) => s + r.roas * r.investimento, 0) / totalInvestimento
+      ? filteredPaid.reduce((s, r) => s + r.roas * r.investimento, 0) / totalInvestimento
       : 0;
-  const avgCtr = paid.length > 0 ? paid.reduce((s, r) => s + r.ctr, 0) / paid.length : 0;
-  const avgFreq = paid.length > 0 ? paid.reduce((s, r) => s + r.frequencia, 0) / paid.length : 0;
+  const avgCtr = filteredPaid.length > 0 ? filteredPaid.reduce((s, r) => s + r.ctr, 0) / filteredPaid.length : 0;
+  const avgFreq = filteredPaid.length > 0 ? filteredPaid.reduce((s, r) => s + r.frequencia, 0) / filteredPaid.length : 0;
 
-  const countSaudavel = paid.filter((r) => r.status === "Saudável").length;
-  const countAtencao = paid.filter((r) => r.status === "Atenção").length;
-  const countPausar = paid.filter((r) => r.status === "Pausar").length;
+  const countSaudavel = filteredPaid.filter((r) => r.status === "Saudável").length;
+  const countAtencao = filteredPaid.filter((r) => r.status === "Atenção").length;
+  const countPausar = filteredPaid.filter((r) => r.status === "Pausar").length;
+
+  // Get unique accounts for filter
+  const accounts = [...new Set(paid.map((r) => r.conta))].sort();
 
   // Organic summary
   const totalPosts = organic.length;
@@ -199,7 +215,7 @@ export default function Home() {
               </h1>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap justify-end">
             <select
               value={datePreset}
               onChange={(e) => setDatePreset(e.target.value)}
@@ -212,7 +228,25 @@ export default function Home() {
               <option value="last_90d">Últimos 90 dias</option>
               <option value="this_month">Este Mês</option>
               <option value="last_month">Mês Passado</option>
+              <option value="custom">Personalizado</option>
             </select>
+            {datePreset === "custom" && (
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="date"
+                  value={customSince}
+                  onChange={(e) => setCustomSince(e.target.value)}
+                  className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-black focus:outline-none focus:ring-1 focus:ring-red"
+                />
+                <span className="text-xs text-gray-400">até</span>
+                <input
+                  type="date"
+                  value={customUntil}
+                  onChange={(e) => setCustomUntil(e.target.value)}
+                  className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-black focus:outline-none focus:ring-1 focus:ring-red"
+                />
+              </div>
+            )}
             {fetchedAt && (
               <p className="text-xs text-gray-400 hidden sm:block">
                 Atualizado:{" "}
@@ -265,6 +299,34 @@ export default function Home() {
         {/* PAGO TAB */}
         {tab === "pago" && (
           <>
+            {/* Account Filter */}
+            {accounts.length > 1 && (
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Conta:</span>
+                <div className="flex gap-1 bg-white rounded-lg p-0.5">
+                  <button
+                    onClick={() => setAccountFilter("all")}
+                    className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
+                      accountFilter === "all" ? "bg-black text-white" : "text-gray-500 hover:text-black"
+                    }`}
+                  >
+                    Todas ({paid.length})
+                  </button>
+                  {accounts.map((acc) => (
+                    <button
+                      key={acc}
+                      onClick={() => setAccountFilter(acc)}
+                      className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
+                        accountFilter === acc ? "bg-black text-white" : "text-gray-500 hover:text-black"
+                      }`}
+                    >
+                      {acc} ({paid.filter((r) => r.conta === acc).length})
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Summary Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <SummaryCard label="Total Investimento" value={fmtBRL(totalInvestimento)} />
@@ -432,7 +494,18 @@ export default function Home() {
                         }`}
                       >
                         <td className={`${tdClass} font-medium text-black max-w-[200px] truncate`}>
-                          {row.nome}
+                          {row.permalink ? (
+                            <a
+                              href={row.permalink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="hover:text-red transition-colors underline decoration-gray-300 hover:decoration-red"
+                            >
+                              {row.nome}
+                            </a>
+                          ) : (
+                            row.nome
+                          )}
                         </td>
                         <td className={tdClass}>{row.formato}</td>
                         <td className={tdClass}>{row.data}</td>
