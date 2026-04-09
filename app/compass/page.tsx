@@ -134,15 +134,116 @@ function evalGroup(ad: CompassAd, group: CustomGroup): boolean {
 
 /* ── Date helpers ── */
 
-function daysAgo(n: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
+type DatePreset =
+  | "today"
+  | "yesterday"
+  | "this_week"
+  | "this_month"
+  | "last_week"
+  | "last_month"
+  | "last_7d"
+  | "last_14d"
+  | "last_30d"
+  | "last_90d"
+  | "last_365d"
+  | "custom";
+
+const DATE_PRESETS: { id: DatePreset; label: string }[] = [
+  { id: "today", label: "Today" },
+  { id: "yesterday", label: "Yesterday" },
+  { id: "this_week", label: "This week" },
+  { id: "this_month", label: "This month" },
+  { id: "last_week", label: "Last week" },
+  { id: "last_month", label: "Last month" },
+  { id: "last_7d", label: "Last 7 days" },
+  { id: "last_14d", label: "Last 14 days" },
+  { id: "last_30d", label: "Last 30 days" },
+  { id: "last_90d", label: "Last 90 days" },
+  { id: "last_365d", label: "Last 365 days" },
+  { id: "custom", label: "Custom" },
+];
+
+function toYMD(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+function resolvePreset(preset: DatePreset): { since: string; until: string; label: string } {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const until = toYMD(today);
+
+  switch (preset) {
+    case "today":
+      return { since: until, until, label: "Today" };
+    case "yesterday": {
+      const y = new Date(today);
+      y.setDate(y.getDate() - 1);
+      return { since: toYMD(y), until: toYMD(y), label: "Yesterday" };
+    }
+    case "this_week": {
+      const dow = today.getDay(); // 0=Sun
+      const start = new Date(today);
+      start.setDate(start.getDate() - dow);
+      return { since: toYMD(start), until, label: "This week" };
+    }
+    case "this_month": {
+      const start = new Date(today.getFullYear(), today.getMonth(), 1);
+      return { since: toYMD(start), until, label: "This month" };
+    }
+    case "last_week": {
+      const dow = today.getDay();
+      const end = new Date(today);
+      end.setDate(end.getDate() - dow - 1);
+      const start = new Date(end);
+      start.setDate(start.getDate() - 6);
+      return { since: toYMD(start), until: toYMD(end), label: "Last week" };
+    }
+    case "last_month": {
+      const end = new Date(today.getFullYear(), today.getMonth(), 0);
+      const start = new Date(end.getFullYear(), end.getMonth(), 1);
+      return { since: toYMD(start), until: toYMD(end), label: "Last month" };
+    }
+    case "last_7d": {
+      const s = new Date(today);
+      s.setDate(s.getDate() - 7);
+      return { since: toYMD(s), until, label: "Last 7 days" };
+    }
+    case "last_14d": {
+      const s = new Date(today);
+      s.setDate(s.getDate() - 14);
+      return { since: toYMD(s), until, label: "Last 14 days" };
+    }
+    case "last_30d": {
+      const s = new Date(today);
+      s.setDate(s.getDate() - 30);
+      return { since: toYMD(s), until, label: "Last 30 days" };
+    }
+    case "last_90d": {
+      const s = new Date(today);
+      s.setDate(s.getDate() - 90);
+      return { since: toYMD(s), until, label: "Last 90 days" };
+    }
+    case "last_365d": {
+      const s = new Date(today);
+      s.setDate(s.getDate() - 365);
+      return { since: toYMD(s), until, label: "Last 365 days" };
+    }
+    default:
+      return { since: toYMD(today), until, label: "Custom" };
+  }
 }
 
 function formatDate(iso: string): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("pt-BR");
+}
+
+function formatRangeLabel(preset: DatePreset, since: string, until: string): string {
+  if (preset === "custom") {
+    return `${since} – ${until}`;
+  }
+  const p = DATE_PRESETS.find((d) => d.id === preset);
+  return `${p?.label ?? preset}  ${since} – ${until}`;
 }
 
 /* ── Page ── */
@@ -159,8 +260,16 @@ export default function CompassPage() {
   const [mounted, setMounted] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState(0);
 
-  // Date range for "Launched" window
-  const [launchDays, setLaunchDays] = useState(14);
+  // Date range
+  const [datePreset, setDatePreset] = useState<DatePreset>("last_14d");
+  const [customSince, setCustomSince] = useState("");
+  const [customUntil, setCustomUntil] = useState("");
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+
+  const dateRange =
+    datePreset === "custom" && customSince && customUntil
+      ? { since: customSince, until: customUntil, label: "Custom" }
+      : resolvePreset(datePreset);
 
   useEffect(() => {
     const s = loadSettings();
@@ -173,10 +282,8 @@ export default function CompassPage() {
     setLoading(true);
     setError(null);
     try {
-      const since = daysAgo(launchDays);
-      const until = new Date().toISOString().slice(0, 10);
       const res = await fetch(
-        `/api/compass?since=${since}&until=${until}`,
+        `/api/compass?since=${dateRange.since}&until=${dateRange.until}`,
       );
       if (!res.ok) throw new Error("Erro ao buscar dados");
       const json = await res.json();
@@ -186,7 +293,7 @@ export default function CompassPage() {
     } finally {
       setLoading(false);
     }
-  }, [launchDays]);
+  }, [dateRange.since, dateRange.until]);
 
   useEffect(() => {
     fetchData();
@@ -195,11 +302,9 @@ export default function CompassPage() {
   /* ── Filters ── */
 
   const launchedAds = ads.filter((a) => {
-    if (!a.criadoEm) return true; // no date = include by default
+    if (!a.criadoEm) return true;
     const created = new Date(a.criadoEm);
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - launchDays);
-    return created >= cutoff;
+    return created >= new Date(dateRange.since) && created <= new Date(dateRange.until + "T23:59:59");
   });
 
   const scaledAds = ads.filter((a) => a.investimento > settings.scaledSpend);
@@ -308,7 +413,7 @@ export default function CompassPage() {
       id: "launched",
       label: "Launched",
       count: launchedAds.length,
-      sub: `Last ${launchDays} days`,
+      sub: `Since ${dateRange.since}`,
       icon: "🚀",
     },
     {
@@ -367,17 +472,98 @@ export default function CompassPage() {
           </div>
           <div className="flex items-center gap-3">
             {/* Date range selector */}
-            <select
-              value={launchDays}
-              onChange={(e) => setLaunchDays(Number(e.target.value))}
-              className="text-xs border border-gray-200 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-red"
-            >
-              <option value={7}>Last 7 days</option>
-              <option value={14}>Last 14 days</option>
-              <option value={30}>Last 30 days</option>
-              <option value={60}>Last 60 days</option>
-              <option value={90}>Last 90 days</option>
-            </select>
+            <div className="relative">
+              <button
+                onClick={() => setDatePickerOpen(!datePickerOpen)}
+                className="flex items-center gap-2 text-xs border border-gray-200 rounded-md px-3 py-1.5 bg-white hover:bg-gray-50 transition-colors"
+              >
+                <span className="text-gray-400">📅</span>
+                <span className="font-semibold text-black">
+                  {DATE_PRESETS.find((d) => d.id === datePreset)?.label ?? "Custom"}
+                </span>
+                <span className="text-gray-400">
+                  {dateRange.since} – {dateRange.until}
+                </span>
+                <svg className="w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {datePickerOpen && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setDatePickerOpen(false)} />
+                  <div className="absolute right-0 top-full mt-1 z-40 bg-white rounded-xl border border-gray-200 shadow-xl flex overflow-hidden">
+                    {/* Presets list */}
+                    <div className="w-44 border-r border-gray-100 py-2">
+                      {DATE_PRESETS.map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => {
+                            setDatePreset(p.id);
+                            if (p.id !== "custom") setDatePickerOpen(false);
+                          }}
+                          className={`w-full text-left px-4 py-2 text-xs transition-colors ${
+                            datePreset === p.id
+                              ? "bg-red/5 text-red font-semibold"
+                              : "text-gray-600 hover:bg-gray-50"
+                          }`}
+                        >
+                          {p.label}
+                          {datePreset === p.id && <span className="ml-1">✓</span>}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Custom date inputs */}
+                    <div className="p-4 w-72">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-3">
+                        Custom Range
+                      </p>
+                      <div className="space-y-2">
+                        <div>
+                          <label className="text-[10px] text-gray-400 block mb-1">From</label>
+                          <input
+                            type="date"
+                            value={datePreset === "custom" ? customSince : dateRange.since}
+                            onChange={(e) => {
+                              setDatePreset("custom");
+                              setCustomSince(e.target.value);
+                            }}
+                            className="w-full text-xs border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-red"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-400 block mb-1">To</label>
+                          <input
+                            type="date"
+                            value={datePreset === "custom" ? customUntil : dateRange.until}
+                            onChange={(e) => {
+                              setDatePreset("custom");
+                              setCustomUntil(e.target.value);
+                            }}
+                            className="w-full text-xs border border-gray-200 rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-red"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-2 mt-4">
+                        <button
+                          onClick={() => setDatePickerOpen(false)}
+                          className="px-3 py-1.5 text-xs text-gray-500 hover:text-black transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => setDatePickerOpen(false)}
+                          className="px-4 py-1.5 text-xs font-semibold rounded-md bg-red text-white hover:opacity-90 transition-colors"
+                        >
+                          Apply
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
             {/* Report Settings button */}
             <button
               onClick={() => {
@@ -449,7 +635,7 @@ export default function CompassPage() {
         {/* View toggle + perf date range label */}
         <div className="flex items-center justify-between mb-4">
           <p className="text-xs text-gray-400">
-            Perf. Last {launchDays} days · {daysAgo(launchDays)} – {new Date().toISOString().slice(0, 10)}
+            Perf. {dateRange.since} – {dateRange.until}
           </p>
           <div className="flex gap-1 bg-white rounded-lg p-1 border border-gray-100">
             <button
