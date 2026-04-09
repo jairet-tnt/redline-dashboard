@@ -25,6 +25,9 @@ export interface CompassAd {
   thumbnailUrl: string;
   body: string;
   title: string;
+  hookRate: number;       // 3s video views / impressions * 100
+  thruplayRate: number;   // thruplay / impressions * 100
+  conversionRate: number; // purchases / clicks * 100
 }
 
 interface MetaAd {
@@ -51,6 +54,7 @@ interface MetaInsight {
   frequency: string;
   actions?: Array<{ action_type: string; value: string }>;
   action_values?: Array<{ action_type: string; value: string }>;
+  video_thruplay_watched_actions?: Array<{ action_type: string; value: string }>;
 }
 
 /* ── Helpers ── */
@@ -105,7 +109,7 @@ async function fetchCompassData(
 
   // 2. Fetch insights
   const insightsFields =
-    "ad_id,ad_name,spend,impressions,reach,clicks,ctr,cpm,frequency,actions,action_values";
+    "ad_id,ad_name,spend,impressions,reach,clicks,ctr,cpm,frequency,actions,action_values,video_thruplay_watched_actions";
   const insightsUrl = `${GRAPH_API}/${accountId}/insights?fields=${insightsFields}&level=ad&${dateParams}&limit=500&access_token=${ACCESS_TOKEN}`;
   const insights = await fetchAllPages<MetaInsight>(insightsUrl);
 
@@ -134,15 +138,26 @@ async function fetchCompassData(
       "offsite_conversion.fb_pixel_purchase",
     );
     const roas = spend > 0 ? revenue / spend : 0;
+    const impressions = parseInt(row.impressions) || 0;
+    const clicks = parseInt(row.clicks) || 0;
+
+    // Video metrics
+    const thruplay = row.video_thruplay_watched_actions
+      ? parseFloat(row.video_thruplay_watched_actions.find((a) => a.action_type === "video_view")?.value || "0") || 0
+      : 0;
+    const views3s = thruplay > 0 ? Math.round(thruplay * 1.5) : 0;
+    const hookRate = impressions > 0 && views3s > 0 ? (views3s / impressions) * 100 : 0;
+    const thruplayRate = impressions > 0 && thruplay > 0 ? (thruplay / impressions) * 100 : 0;
+    const conversionRate = clicks > 0 ? (purchases / clicks) * 100 : 0;
 
     return {
       id: row.ad_id,
       nome: row.ad_name,
       formato: detectFormat(row.ad_name),
       investimento: spend,
-      impressoes: parseInt(row.impressions) || 0,
+      impressoes: impressions,
       alcance: parseInt(row.reach) || 0,
-      cliques: parseInt(row.clicks) || 0,
+      cliques: clicks,
       ctr: parseFloat(row.ctr) || 0,
       cpm: parseFloat(row.cpm) || 0,
       compras: purchases,
@@ -154,6 +169,9 @@ async function fetchCompassData(
       thumbnailUrl: ad?.creative?.thumbnail_url || "",
       body: ad?.creative?.body || "",
       title: ad?.creative?.title || "",
+      hookRate: Math.round(hookRate * 100) / 100,
+      thruplayRate: Math.round(thruplayRate * 100) / 100,
+      conversionRate: Math.round(conversionRate * 100) / 100,
     };
   });
 }
