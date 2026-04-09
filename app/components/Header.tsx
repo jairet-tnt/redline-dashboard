@@ -10,6 +10,7 @@ export default function Header() {
     { href: "/", label: "Mídia" },
     { href: "/meta", label: "Criativos" },
     { href: "/producao", label: "Produção" },
+    { href: "/compass", label: "Compass" },
   ];
 
   return (
