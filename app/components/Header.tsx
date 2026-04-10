@@ -7,7 +7,8 @@ export default function Header() {
   const pathname = usePathname();
 
   const links = [
-    { href: "/", label: "Mídia" },
+    { href: "/anuncios", label: "Anúncios" },
+    { href: "/organico", label: "Orgânico" },
     { href: "/meta", label: "Criativos" },
     { href: "/producao", label: "Produção" },
     { href: "/compass", label: "Compass" },
@@ -29,10 +30,7 @@ export default function Header() {
         </div>
         <nav className="flex gap-1 bg-stone rounded-lg p-1">
           {links.map((link) => {
-            const isActive =
-              link.href === "/"
-                ? pathname === "/"
-                : pathname.startsWith(link.href);
+            const isActive = pathname.startsWith(link.href);
             return (
               <Link
                 key={link.href}
