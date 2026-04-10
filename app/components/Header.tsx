@@ -12,6 +12,7 @@ export default function Header() {
     { href: "/meta", label: "Criativos" },
     { href: "/producao", label: "Produção" },
     { href: "/compass", label: "Compass" },
+    { href: "/inspiracao", label: "Inspiration" },
   ];
 
   return (
