@@ -24,6 +24,7 @@ interface AdResult {
 interface Brand {
   pageId: string;
   name: string;
+  country: string;
   addedAt: string;
 }
 
@@ -90,6 +91,7 @@ export default function InspiracaoPage() {
   const [mounted, setMounted] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalInput, setModalInput] = useState("");
+  const [modalCountry, setModalCountry] = useState("BR");
   const [modalLoading, setModalLoading] = useState(false);
   const [modalError, setModalError] = useState("");
   const [expandedBrand, setExpandedBrand] = useState<string | null>(null);
@@ -116,7 +118,7 @@ export default function InspiracaoPage() {
       });
 
       try {
-        const res = await fetch(`/api/inspiracao?page_id=${brand.pageId}`);
+        const res = await fetch(`/api/inspiracao?page_id=${brand.pageId}&country=${brand.country || "BR"}`);
         if (!res.ok) throw new Error("Failed to fetch");
         const data = await res.json();
 
@@ -186,12 +188,12 @@ export default function InspiracaoPage() {
 
     setModalLoading(true);
     try {
-      const res = await fetch(`/api/inspiracao?page_id=${pageId}`);
+      const res = await fetch(`/api/inspiracao?page_id=${pageId}&country=${modalCountry}`);
       if (!res.ok) throw new Error("API error");
       const data = await res.json();
 
       if (!data.ads || data.ads.length === 0) {
-        setModalError("No ads found for this Page ID. Check the URL and try again.");
+        setModalError("No ads found for this Page ID in the selected country. Try a different country or check the URL.");
         setModalLoading(false);
         return;
       }
@@ -199,6 +201,7 @@ export default function InspiracaoPage() {
       const newBrand: Brand = {
         pageId,
         name: data.pageName || `Page ${pageId}`,
+        country: modalCountry,
         addedAt: new Date().toISOString(),
       };
 
@@ -378,9 +381,12 @@ export default function InspiracaoPage() {
                   <h3 className="text-sm font-bold text-black mb-1 pr-6">
                     {brand.name}
                   </h3>
-                  <p className="text-[10px] text-gray-400 mb-4">
-                    Page ID: {brand.pageId}
-                  </p>
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="text-[10px] text-gray-400">Page ID: {brand.pageId}</span>
+                    <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold bg-gray-100 text-gray-500">
+                      {brand.country === "US" ? "🇺🇸 US" : "🇧🇷 BR"}
+                    </span>
+                  </div>
 
                   {isLoading ? (
                     <p className="text-xs text-gray-400">Loading...</p>
@@ -451,6 +457,31 @@ export default function InspiracaoPage() {
                   className="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-red/30 focus:border-red"
                   onKeyDown={(e) => e.key === "Enter" && handleAddBrand()}
                 />
+
+                {/* Country selector */}
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1.5">
+                    Country
+                  </label>
+                  <div className="flex gap-2">
+                    {[
+                      { id: "BR", label: "🇧🇷 Brazil" },
+                      { id: "US", label: "🇺🇸 United States" },
+                    ].map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => setModalCountry(c.id)}
+                        className={`flex-1 px-3 py-2 text-xs font-semibold rounded-lg border transition-colors ${
+                          modalCountry === c.id
+                            ? "bg-black text-white border-black"
+                            : "bg-white text-gray-500 border-gray-200 hover:border-gray-400"
+                        }`}
+                      >
+                        {c.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
                 {modalError && (
                   <p className="text-xs text-red">{modalError}</p>
