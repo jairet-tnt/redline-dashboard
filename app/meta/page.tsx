@@ -304,7 +304,13 @@ export default function MetaPage() {
                         <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-stone text-gray-500">{c.formato}</span>
                         <StatusBadge status={c.status} />
                       </div>
-                      <p className="text-sm font-semibold text-black truncate mb-3">{c.nome}</p>
+                      <a
+                        href={`https://www.facebook.com/ads/archive/render_ad/?id=${c.adId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-sm font-semibold text-black truncate mb-3 block hover:text-red transition-colors underline decoration-gray-300 hover:decoration-red"
+                      >{c.nome}</a>
                       <div className="grid grid-cols-3 gap-2 text-center">
                         <div>
                           <p className="text-[10px] text-gray-400 uppercase">Invest.</p>
@@ -511,7 +517,13 @@ export default function MetaPage() {
                   <div key={c.adId} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
                     <Thumbnail src={c.thumbnailUrl} alt={c.nome} />
                     <div className="p-4">
-                      <p className="text-sm font-semibold text-black truncate mb-3">{c.nome}</p>
+                      <a
+                        href={`https://www.facebook.com/ads/archive/render_ad/?id=${c.adId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-sm font-semibold text-black truncate mb-3 block hover:text-red transition-colors underline decoration-gray-300 hover:decoration-red"
+                      >{c.nome}</a>
                       <div className="flex items-center gap-2 mb-3">
                         <p className="text-2xl font-bold text-black">{fmtPct(c.hookRate)}</p>
                         <div>

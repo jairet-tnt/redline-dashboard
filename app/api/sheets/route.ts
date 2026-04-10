@@ -7,6 +7,7 @@ const INSTAGRAM_ACCOUNT_ID = process.env.INSTAGRAM_ACCOUNT_ID;
 const GRAPH_API = "https://graph.facebook.com/v21.0";
 
 interface PaidRow {
+  adId: string;
   nome: string;
   investimento: number;
   impressoes: number;
@@ -71,6 +72,7 @@ function getActionValue(
 }
 
 interface MetaInsightRow {
+  ad_id?: string;
   ad_name?: string;
   spend?: string;
   impressions?: string;
@@ -106,6 +108,7 @@ async function fetchAllPages<T>(url: string): Promise<T[]> {
 
 async function fetchAdInsights(accountId: string, dateParams: string): Promise<PaidRow[]> {
   const fields = [
+    "ad_id",
     "ad_name",
     "spend",
     "impressions",
@@ -136,6 +139,7 @@ async function fetchAdInsights(accountId: string, dateParams: string): Promise<P
     const roas = spend > 0 ? revenue / spend : 0;
 
     const base = {
+      adId: row.ad_id || "",
       nome: row.ad_name || "",
       investimento: spend,
       impressoes: parseInt(row.impressions || "0") || 0,

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Header from "./components/Header";
 
 interface PaidRow {
+  adId: string;
   nome: string;
   investimento: number;
   impressoes: number;
@@ -379,7 +380,18 @@ export default function Home() {
                       >
                         <td className={`${tdClass} text-xs text-gray-500`}>{row.conta}</td>
                         <td className={`${tdClass} font-medium text-black max-w-[200px] truncate`}>
-                          {row.nome}
+                          {row.adId ? (
+                            <a
+                              href={`https://www.facebook.com/ads/archive/render_ad/?id=${row.adId}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="hover:text-red transition-colors underline decoration-gray-300 hover:decoration-red"
+                            >
+                              {row.nome}
+                            </a>
+                          ) : (
+                            row.nome
+                          )}
                         </td>
                         <td className={tdClass}>{fmtBRL(row.investimento)}</td>
                         <td className={tdClass}>{fmtPct(row.ctr)}</td>

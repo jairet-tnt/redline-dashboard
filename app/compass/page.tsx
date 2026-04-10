@@ -830,7 +830,13 @@ export default function CompassPage() {
                             <div className="w-10 h-10 rounded-lg bg-gray-100 flex-shrink-0" />
                           )}
                           <div className="min-w-0">
-                            <p className="text-sm font-semibold text-black truncate max-w-[240px]">{ad.nome}</p>
+                            <a
+                              href={`https://www.facebook.com/ads/archive/render_ad/?id=${ad.id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-sm font-semibold text-black truncate max-w-[240px] block hover:text-red transition-colors underline decoration-gray-300 hover:decoration-red"
+                            >{ad.nome}</a>
                             {tableSettings.showLaunchDate && ad.criadoEm && (
                               <p className="text-[10px] text-gray-400 mt-0.5">{formatDate(ad.criadoEm)}</p>
                             )}
@@ -891,7 +897,12 @@ export default function CompassPage() {
                     <div className="w-12 h-12 rounded-lg bg-gray-100 flex-shrink-0" />
                   )}
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-black truncate">{ad.nome}</p>
+                    <a
+                      href={`https://www.facebook.com/ads/archive/render_ad/?id=${ad.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-semibold text-black truncate block hover:text-red transition-colors underline decoration-gray-300 hover:decoration-red"
+                    >{ad.nome}</a>
                     <div className="flex items-center gap-1.5 mt-1">
                       <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                         ad.formato === "Video" ? "bg-purple-100 text-purple-700" : ad.formato === "Carrossel" ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700"
