@@ -47,9 +47,14 @@ async function fetchAllPages<T>(url: string, maxPages = 5): Promise<T[]> {
   while (nextUrl && pages < maxPages) {
     const res: Response = await fetch(nextUrl);
     if (!res.ok) {
-      const err = await res.text();
-      console.error("Ad Library API error:", err);
-      throw new Error(`Ad Library API error: ${res.status}`);
+      const errText = await res.text();
+      console.error("Ad Library API error:", errText);
+      let detail = `Status ${res.status}`;
+      try {
+        const errJson = JSON.parse(errText);
+        detail = errJson.error?.message || errJson.error?.error_user_msg || detail;
+      } catch { /* use status */ }
+      throw new Error(detail);
     }
     const json = await res.json();
     allData.push(...(json.data || []));
