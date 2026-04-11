@@ -80,9 +80,8 @@ export default function PrivacyPage() {
           <section>
             <h3 className="text-base font-bold text-black mb-2">8. Contact</h3>
             <p>
-              For questions regarding this privacy policy or data practices, contact the
-              Redline CrossFit Equipment team at the organization&apos;s primary business
-              email address.
+              For questions regarding this privacy policy or data practices, contact us
+              at <a href="mailto:contato@souredline.com.br" className="text-red underline">contato@souredline.com.br</a>.
             </p>
           </section>
 
