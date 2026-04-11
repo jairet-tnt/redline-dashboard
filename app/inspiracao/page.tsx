@@ -189,8 +189,12 @@ export default function InspiracaoPage() {
     setModalLoading(true);
     try {
       const res = await fetch(`/api/inspiracao?page_id=${pageId}&country=${modalCountry}`);
-      if (!res.ok) throw new Error("API error");
       const data = await res.json();
+      if (!res.ok) {
+        setModalError(data.error || `API error: ${res.status}`);
+        setModalLoading(false);
+        return;
+      }
 
       if (!data.ads || data.ads.length === 0) {
         setModalError("No ads found for this Page ID in the selected country. Try a different country or check the URL.");

@@ -97,7 +97,16 @@ export async function GET(request: NextRequest) {
       "languages",
     ].join(",");
 
-    const url = `${GRAPH_API}/ads_archive?search_page_ids=["${pageId}"]&ad_type=ALL&ad_reached_countries=["${country}"]&fields=${fields}&limit=${limit}&access_token=${ACCESS_TOKEN}`;
+    const params = new URLSearchParams({
+      search_page_ids: JSON.stringify([pageId]),
+      ad_type: "ALL",
+      ad_reached_countries: JSON.stringify([country]),
+      fields,
+      limit: limit.toString(),
+      access_token: ACCESS_TOKEN!,
+    });
+
+    const url = `${GRAPH_API}/ads_archive?${params.toString()}`;
 
     const data = await fetchAllPages<AdLibraryAd>(url);
 
@@ -135,9 +144,10 @@ export async function GET(request: NextRequest) {
       },
     );
   } catch (err) {
-    console.error("Ad Library API error:", err);
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("Ad Library API error:", message);
     return NextResponse.json(
-      { error: "Erro ao carregar dados da Ad Library." },
+      { error: `Ad Library error: ${message}` },
       { status: 500 },
     );
   }
